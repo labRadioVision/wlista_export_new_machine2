@@ -23,7 +23,7 @@ import cupy as cp
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
-import run_wlista_synthetic as base
+import run_wlista_synthetic_nowalls as base
 from holography_operator_fast import HolographyOperatorFast
 from lista_holography_lowrank  import LRWLISTAHolography
 import inference_common as ic

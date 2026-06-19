@@ -5,7 +5,7 @@ run_wlista_ken_grasso.py
 W-LISTA (baseline, senza correzione low-rank) su E_total_Ken_grasso_nowalls.mat.
 
 Copia questo file nella stessa cartella degli altri moduli (holography_operator_fast.py,
-lista_holography_weighted.py, run_wlista_synthetic.py, inference_common.py) ed esegui:
+lista_holography_weighted.py, run_wlista_synthetic_nowalls.py, inference_common.py) ed esegui:
 
     python run_wlista_ken_grasso.py > wlista_ken_grasso.log 2>&1
     python run_wlista_ken_grasso.py --resume checkpoints_lista_ken_grasso/wlista_ken_grasso_ep005.pt
@@ -24,7 +24,7 @@ import cupy as cp
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
-import run_wlista_synthetic as base
+import run_wlista_synthetic_nowalls as base
 from holography_operator_fast  import HolographyOperatorFast
 from lista_holography_weighted import WLISTAHolography
 import inference_common as ic
