@@ -1,0 +1,30 @@
+# holography_scripts — Python dependencies
+# Python 3.11 (Anaconda base or standalone)
+#
+# GPU acceleration requires:
+#   - NVIDIA GPU driver >= 560 (CUDA 12.x)
+#   - NO separate CUDA Toolkit install needed (nvrtc/cublas provided via pip)
+#
+# Install with:
+#   pip install -r requirements.txt
+
+# Core scientific stack (numpy 2.x required for CuPy 14.x compatibility)
+numpy>=2.0
+scipy>=1.13
+matplotlib>=3.9
+
+# Deep learning (build CUDA 12.x — DEVE combaciare con cupy/driver)
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+torch>=2.0
+
+# GPU acceleration via CuPy (CUDA 12.x driver required)
+cupy-cuda12x>=14.0
+
+# CUDA runtime libraries (installed via pip, no CUDA Toolkit needed)
+nvidia-cuda-runtime-cu12
+nvidia-cuda-nvrtc-cu12
+nvidia-cublas-cu12
+
+# Opzionali — solo per generate_z_true.py (modalita' non usate nel flusso normale)
+# h5py>=3.8       # estrazione parametri da .cfx  (--mode body --cfx)
+# trimesh>=3.20   # caricamento mesh STL/OBJ      (--mode stl)
