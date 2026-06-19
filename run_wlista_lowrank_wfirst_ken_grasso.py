@@ -94,7 +94,7 @@ LR_W        = base.LR_W
 LAMBDA_INIT = base.LAMBDA_INIT
 L_EST       = base.L_EST
 
-RANK            = 16
+RANK            = 8
 LR_LR           = 1e-5       # UV: lr bassa, si attiva dopo warmup
 WARMUP_EPOCHS   = 6          # epoche con solo W+mu+lambda (UV congelato)
 ALPHA_Z         = 1.0

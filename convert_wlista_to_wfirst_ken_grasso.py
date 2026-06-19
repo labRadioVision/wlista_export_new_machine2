@@ -27,7 +27,7 @@ _ap.add_argument("--src", default=os.path.join(SCRIPT_DIR,
                  help="checkpoint WLISTAHolography sorgente")
 _ap.add_argument("--dst", default=None,
                  help="path output (default: auto)")
-_ap.add_argument("--rank", type=int, default=16)
+_ap.add_argument("--rank", type=int, default=8)
 _args = _ap.parse_args()
 
 SRC_CKPT = os.path.abspath(_args.src)
