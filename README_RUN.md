@@ -66,6 +66,23 @@ tail -f wfirst_ken_grasso.log
 tail -f /workspace/wlista_export_new_machine2/wfirst_ken_grasso.log
 ```
 
+> ⚠️ In wfirst, dopo il warmup, W continua ad allenarsi insieme a UV — può
+> essere instabile (collasso di z osservato a epoca 7). Se succede, usa il
+> phased qui sotto (più stabile: congela W dopo il warm start).
+
+## 4bis. LR-W-LISTA — PHASED (warm start da W-LISTA, W congelato — più stabile)
+
+```bash
+nohup python3 run_wlista_lowrank_phased_ken_grasso.py > phased_ken_grasso.log 2>&1 &
+tail -f phased_ken_grasso.log
+# da un'altra cartella / dopo aver chiuso e riaperto il terminale:
+tail -f /workspace/wlista_export_new_machine2/phased_ken_grasso.log
+```
+
+Fasi automatiche: A (warm start da `checkpoints_lista_ken_grasso/wlista_ken_grasso_best.pt`),
+B (20 epoche, solo U/V/mu — W e lambda congelati), C (10 epoche, fine-tune
+congiunto a LR ridotte, opzionale — tenuto solo se migliora il val di fase B).
+
 ---
 
 ## 5. Inferenza su tutte le epoche e tutte le posizioni

@@ -76,6 +76,8 @@ OUT_ROOT = os.path.join(SCRIPT_DIR, "results_inference_ken_grasso")
 
 
 def guess_ckpt_dir(prefix):
+    if "phased" in prefix:
+        return os.path.join(SCRIPT_DIR, "checkpoints_lista_lowrank_phased_ken_grasso")
     if "wfirst" in prefix:
         return os.path.join(SCRIPT_DIR, "checkpoints_lista_lowrank_wfirst_ken_grasso")
     if "lowrank" in prefix:

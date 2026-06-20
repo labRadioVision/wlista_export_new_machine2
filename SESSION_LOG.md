@@ -12,14 +12,21 @@ Script in `wlista_export_new_machine2/` per dataset sintetico Ken_grasso:
 | `run_lista_ken_grasso.py` | LISTA plain (caso base) | nessun peso per-asse, nessuna correzione low-rank |
 | `run_wlista_ken_grasso.py` | W-LISTA baseline | da lanciare per primo |
 | `run_lowrank_ken_grasso.py` | LR-W-LISTA (rank=8) | joint training |
-| `run_wlista_lowrank_wfirst_ken_grasso.py` | LR-W-LISTA W-FIRST | warmup W-only, poi UV |
-| `convert_wlista_to_wfirst_ken_grasso.py` | — | converte ckpt W-LISTA → wfirst |
+| `run_wlista_lowrank_wfirst_ken_grasso.py` | LR-W-LISTA W-FIRST | warmup W-only, poi tutto insieme (W NON si congela) |
+| `run_wlista_lowrank_phased_ken_grasso.py` | LR-W-LISTA PHASED | warm start da W-LISTA, poi W congelato — solo U,V,mu |
+| `convert_wlista_to_wfirst_ken_grasso.py` | — | converte ckpt W-LISTA → wfirst/phased (stesso formato) |
 | `loop_inference_ken_grasso.py` | — | inferenza su tutte le epoche/posizioni (auto-detect modello) |
 | `run_inference_sweep_lista_ken_grasso.sh` | — | wrapper sweep per LISTA |
 | `run_inference_sweep_wlista_ken_grasso.sh` | — | wrapper sweep per W-LISTA + LR-W-LISTA joint |
 | `run_inference_sweep_wfirst_ken_grasso.sh` | — | wrapper sweep per LR-W-LISTA W-FIRST |
 
-> ⚠️ Il file `run_wlista_lowrank_phased_ken_grasso.py` è un esperimento non testato (approccio alternativo, fasi separate). Non includerlo nei run principali.
+**wfirst vs phased:** entrambi fanno warm start da un checkpoint W-LISTA, ma
+dopo il warmup wfirst continua ad allenare W insieme a UV (puo' essere instabile:
+osservato collasso di z a epoca 7 con LR_W alto), mentre phased CONGELA W e
+allena solo `U,V,log_mu` (fase B), con un'eventuale fase C di fine-tune
+congiunto a LR ridotte. **phased e' la scelta piu' stabile**, consigliata
+dopo il collasso osservato in wfirst con i LR originali (gia' corretti, vedi
+sotto, ma phased resta una protezione aggiuntiva).
 
 **Inferenza (`loop_inference_ken_grasso.py`):** ispirato a `loop_inference_synthetic.py`
 in `holography_scripts/`. Riusa `inference_common.py` (`build_model` con
@@ -37,6 +44,14 @@ Output per ogni (epoca, posizione): `.png` (pannelli GT/MF/ISTA/modello),
 - `Dataset TUM/` è una sottocartella di `wlista_export_new_machine2/` (non cartella sorella)
 - Output e checkpoint vanno in `wlista_export_new_machine2/results_*` e `checkpoints_*`
 - Import: `run_wlista_synthetic_nowalls` (non `run_wlista_synthetic`)
+
+**Fix learning rate (2026-06-20):** `base.LR=5e-2` e `base.LR_W=5e-1` (da
+`run_wlista_synthetic_nowalls.py`) erano troppo alti per Ken_grasso — causa
+probabile del collasso di z osservato in wfirst a epoca 7 (soglia di
+soft-threshold esplosa). Ridotti localmente (override, NON tocca `base.py`)
+in `run_wlista_ken_grasso.py`, `run_lowrank_ken_grasso.py`,
+`run_wlista_lowrank_wfirst_ken_grasso.py`: `LR=1e-2`, `LR_W=1e-1` (fattore 5x).
+`run_lista_ken_grasso.py` non modificato (nessun peso per-asse).
 
 **Bug corretto:** `run_wlista_ken_grasso.py` e `run_lowrank_ken_grasso.py` importavano
 `run_wlista_synthetic` (inesistente) → corretto in `run_wlista_synthetic_nowalls`.

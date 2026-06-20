@@ -1,0 +1,358 @@
+# -*- coding: utf-8 -*-
+"""
+run_wlista_lowrank_phased_ken_grasso.py
+=======================================
+LR-W-LISTA "phased" su E_total_Ken_grasso_nowalls.mat — alternativa più
+stabile a run_wlista_lowrank_wfirst_ken_grasso.py.
+
+Differenza chiave rispetto a wfirst: dopo il warmup, W (log_wx/wy/wz) e
+log_lambda vengono CONGELATI — si allenano solo U, V (+ log_mu). In wfirst
+invece tutti i parametri restano allenabili insieme dopo il warmup, il che
+puo' causare instabilita'/collasso di z quando UV si attiva (osservato a
+epoca 7 con LR_W alto).
+
+Fasi
+----
+  A) Warm start dal checkpoint W-LISTA gia' addestrato (U=0 -> identico a W-LISTA).
+  B) Congelati log_wx/wy/wz e log_lambda: allena solo U, V, log_mu.
+  C) (opzionale) Fine-tune congiunto di tutti i parametri a LR ridotte.
+
+Run
+---
+    nohup python3 run_wlista_lowrank_phased_ken_grasso.py > phased_ken_grasso.log 2>&1 &
+
+    # con checkpoint W-LISTA esplicito
+    python3 run_wlista_lowrank_phased_ken_grasso.py \\
+        --wlista-ckpt checkpoints_lista_ken_grasso/wlista_ken_grasso_best.pt
+
+    # salta fase B (riparti da un checkpoint di fase B gia' fatto)
+    python3 run_wlista_lowrank_phased_ken_grasso.py \\
+        --skip-b checkpoints_lista_lowrank_phased_ken_grasso/wlista_lowrank_phased_ken_grasso_r8_B_best.pt
+
+Il file E_total_Ken_grasso_nowalls.mat deve essere in Dataset TUM/sinthetic_data/
+(sottocartella della cartella in cui si trova questo script).
+"""
+
+import os, sys, time, argparse
+sys.stdout.reconfigure(line_buffering=True)
+import numpy as np
+import scipy.io as sio
+import torch
+import cupy as cp
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, SCRIPT_DIR)
+
+import run_wlista_synthetic_nowalls as base
+from holography_operator_fast import HolographyOperatorFast
+from lista_holography_lowrank  import LRWLISTAHolography
+import inference_common as ic
+
+# ---------------------------------------------------------------------------
+# Override dataset
+# ---------------------------------------------------------------------------
+SYNTH_DIR   = os.path.join(SCRIPT_DIR, "Dataset TUM", "sinthetic_data")
+ETOTAL_FILE = os.path.join(SYNTH_DIR, "E_total_Ken_grasso_nowalls.mat")
+base.ETOTAL_FILE = ETOTAL_FILE
+base.SYNTH_DIR   = SYNTH_DIR
+
+if not os.path.exists(ETOTAL_FILE):
+    raise FileNotFoundError(
+        f"File non trovato: {ETOTAL_FILE}\n"
+        f"Assicurati che sia in {SYNTH_DIR}")
+
+# --- auto-detect numero di posizioni ---
+_mat  = sio.loadmat(ETOTAL_FILE)
+_keys = [k for k in _mat if not k.startswith("_")]
+_n_pos, _k = None, _keys[0]
+for _k in _keys:
+    if _mat[_k].ndim == 3 and _mat[_k].shape[:2] == (162, 80):
+        _n_pos = _mat[_k].shape[2]
+        break
+if _n_pos is None:
+    _n_pos = _mat[_keys[0]].shape[-1]
+print(f"[Ken_grasso phased] N_pos rilevato = {_n_pos}  (chiave: '{_k}')")
+
+base.TRAIN_IDX  = list(range(_n_pos))
+base.VAL_IDX    = [_n_pos - 1]
+base.POS_LABELS = [f"ken_grasso_pos{i:02d}" for i in range(_n_pos)]
+
+# ---------------------------------------------------------------------------
+# Cartelle output dedicate
+# ---------------------------------------------------------------------------
+OUT_DIR  = os.path.join(SCRIPT_DIR, "results_wlista_lowrank_phased_ken_grasso")
+CKPT_DIR = os.path.join(SCRIPT_DIR, "checkpoints_lista_lowrank_phased_ken_grasso")
+os.makedirs(OUT_DIR,  exist_ok=True)
+os.makedirs(CKPT_DIR, exist_ok=True)
+base.OUT_DIR  = OUT_DIR
+base.CKPT_DIR = CKPT_DIR
+
+# Default checkpoint W-LISTA prodotto da run_wlista_ken_grasso.py
+WLISTA_CKPT_DEFAULT = os.path.join(
+    SCRIPT_DIR, "checkpoints_lista_ken_grasso", "wlista_ken_grasso_best.pt")
+
+# ---------------------------------------------------------------------------
+# Iperparametri
+# ---------------------------------------------------------------------------
+NX, NY, NZ  = base.NX, base.NY, base.NZ
+K           = base.K
+LAMBDA_INIT = base.LAMBDA_INIT
+L_EST       = base.L_EST
+
+# LR ridotti (stesso fix applicato a run_wlista_ken_grasso.py / run_lowrank_ken_grasso.py /
+# run_wlista_lowrank_wfirst_ken_grasso.py: base.LR=5e-2 / base.LR_W=5e-1 erano troppo alti)
+LR_BASE   = 1e-2
+LR_W_BASE = 1e-1
+
+RANK            = 8
+PHASE_B_EPOCHS  = 20
+PHASE_C_EPOCHS  = 10
+LR_LR           = 1e-2       # U, V  (fase B)
+LR_MU_B         = 1e-2       # log_mu in fase B
+LR_C_SCALE      = 0.1        # scala LR fase C rispetto a LR_BASE/LR_W_BASE
+FREEZE_LAMBDA_B = True       # log_lambda congelato anche in fase B (oltre a W)
+
+ALPHA_Z   = 1.0
+BETA_DATA = 1e-4
+GAMMA_REG = 1e-1
+
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+# ---------------------------------------------------------------------------
+# Operator
+# ---------------------------------------------------------------------------
+def build_operator_fast(rx_ref, k, omega):
+    print("\nBuilding FAST operator (DLPack) ...")
+    Nx_rx, Ny_rx = rx_ref["S21"].shape[:2]
+    x_rx = rx_ref["X"][:, 0]; y_rx = rx_ref["Y"][0, :]
+    XX, YY = np.meshgrid(x_rx, y_rx, indexing="ij")
+    r_rx  = np.column_stack([XX.ravel(), YY.ravel(), np.zeros(Nx_rx * Ny_rx)])
+    XXv, YYv, ZZv = np.meshgrid(base.X_IMG, base.Y_IMG, base.Z_IMG, indexing="ij")
+    r_vox = np.column_stack([XXv.ravel(), YYv.ravel(), ZZv.ravel()])
+    dV = (base.X_IMG[1]-base.X_IMG[0])*(base.Y_IMG[1]-base.Y_IMG[0])*(base.Z_IMG[1]-base.Z_IMG[0])
+    print(f"  Receivers : {r_rx.shape[0]}  ({Nx_rx}x{Ny_rx})")
+    print(f"  Voxels    : {r_vox.shape[0]}  ({NX}x{NY}x{NZ})")
+    return HolographyOperatorFast(cp.asarray(r_rx), cp.asarray(r_vox),
+                                  k=k, omega=omega, mu0=base.MU0, dV=dV,
+                                  batch_rx=base.BATCH_RX)
+
+
+# ---------------------------------------------------------------------------
+# Loss + helpers
+# ---------------------------------------------------------------------------
+def loss_terms(model, op, b, z_true):
+    z_pred = model(b, op, warm_start=True)
+    loss_z = torch.mean((z_pred.abs() - z_true.abs()) ** 2)
+    y_hat  = model.measure(z_pred, op)
+    normb2 = torch.mean(b.abs() ** 2) + 1e-12
+    loss_d = torch.mean((y_hat - b).abs() ** 2) / normb2
+    reg    = model.lowrank_frob_sq()
+    tot    = ALPHA_Z * loss_z + BETA_DATA * loss_d + GAMMA_REG * reg
+    return tot, loss_z, loss_d, reg
+
+
+def evaluate(model, op, b_va, z_va):
+    model.eval(); vloss = 0.0; vloss_z = 0.0
+    with torch.no_grad():
+        for j in range(len(b_va)):
+            vt, vz, _, _ = loss_terms(model, op, b_va[j], z_va[j])
+            vloss += float(vt); vloss_z += float(vz)
+    n = max(len(b_va), 1)
+    return vloss / n, vloss_z / n
+
+
+def set_requires_grad(model, names, flag):
+    for n, p in model.named_parameters():
+        if n in names:
+            p.requires_grad_(flag)
+
+
+# ---------------------------------------------------------------------------
+# Loop di training per una fase
+# ---------------------------------------------------------------------------
+def train_phase(model, op, optim, b_tr, z_tr, b_va, z_va,
+                n_epochs, phase_tag, ckpt_name):
+    N = len(b_tr)
+    loss_hist, val_hist, best_val = [], [], float("inf")
+    best_path = os.path.join(CKPT_DIR, f"{ckpt_name}_{phase_tag}_best.pt")
+
+    REF_DIR = os.path.join(OUT_DIR, f"epoch_recon_{phase_tag}")
+    os.makedirs(REF_DIR, exist_ok=True)
+    b_ref = b_va[0] if b_va else b_tr[0]
+    if z_va:
+        z_ref = z_va[0].detach().cpu().numpy()
+    else:
+        z_ref = z_tr[0].detach().cpu().numpy()
+
+    trainable = [n for n, p in model.named_parameters() if p.requires_grad]
+    print(f"\n[FASE {phase_tag}] epochs={n_epochs}  trainable={trainable}")
+
+    for epoch in range(1, n_epochs + 1):
+        t0 = time.time(); model.train(); optim.zero_grad()
+        agg = torch.zeros((), device=DEVICE)
+        lz = ld = lr_ = 0.0
+        for idx in np.random.permutation(N):
+            tot, a, b_, c = loss_terms(model, op, b_tr[idx], z_tr[idx])
+            agg = agg + tot
+            lz += float(a); ld += float(b_); lr_ += float(c)
+        (agg / N).backward()
+        torch.nn.utils.clip_grad_norm_(
+            [p for p in model.parameters() if p.requires_grad], max_norm=1.0)
+        optim.step()
+        with torch.no_grad():
+            model.log_wx.clamp_(-base.W_LOG_CLAMP, base.W_LOG_CLAMP)
+            model.log_wy.clamp_(-base.W_LOG_CLAMP, base.W_LOG_CLAMP)
+            model.log_wz.clamp_(-base.W_LOG_CLAMP, base.W_LOG_CLAMP)
+
+        vloss, vloss_z = evaluate(model, op, b_va, z_va)
+        tr_loss = float(agg) / N
+        loss_hist.append(tr_loss); val_hist.append(vloss)
+        st = model.lowrank_stats()
+        mu_max = float(torch.exp(model.log_mu).max())
+        print(f"  [{phase_tag}] Ep {epoch:3d}/{n_epochs}  train={tr_loss:.4e} "
+              f"(z={lz/N:.3e} data={ld/N:.3e} reg={lr_/N:.2e})  "
+              f"val={vloss:.4e} val_z={vloss_z:.3e}  t={time.time()-t0:.0f}s  "
+              f"|U|={st['U_fro']:.2e} |V|={st['V_fro']:.2e} mu_max={mu_max:.2e}")
+
+        model.eval()
+        with torch.no_grad():
+            z_snap = model(b_ref, op, warm_start=True).detach().cpu().numpy()
+        ic.save_epoch_snapshot(REF_DIR, f"{ckpt_name}_{phase_tag}", epoch,
+                               base.X_IMG, base.Y_IMG, base.Z_IMG,
+                               z_snap, z_true=z_ref)
+
+        ckpt = dict(epoch=epoch, phase=phase_tag, K=K,
+                    Nx=NX, Ny=NY, Nz=NZ, M=model.M, rank=model.rank,
+                    model_state=model.state_dict(), optim_state=optim.state_dict(),
+                    loss=tr_loss, val=vloss, best_val=best_val,
+                    loss_history=loss_hist, val_history=val_hist,
+                    train_idx=base.TRAIN_IDX, val_idx=base.VAL_IDX)
+        torch.save(ckpt, os.path.join(CKPT_DIR, f"{ckpt_name}_{phase_tag}_ep{epoch:03d}.pt"))
+        if vloss < best_val:
+            best_val = vloss; ckpt["best_val"] = best_val
+            torch.save(ckpt, best_path)
+            print(f"    [best {phase_tag}] val={best_val:.4e}")
+
+    print(f"  [FASE {phase_tag}] best_val={best_val:.4e}  -> {best_path}")
+    return best_path, loss_hist, best_val
+
+
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--rank",        type=int, default=RANK)
+    ap.add_argument("--wlista-ckpt", default=WLISTA_CKPT_DEFAULT)
+    ap.add_argument("--skip-b",      default=None,
+                    help="checkpoint da cui partire saltando la fase B")
+    ap.add_argument("--infer-only",  default=None)
+    args = ap.parse_args()
+    RANK      = args.rank
+    ckpt_name = f"wlista_lowrank_phased_ken_grasso_r{RANK}"
+
+    t_start = time.time()
+    print("=" * 68)
+    print(f"LR-W-LISTA PHASED (W congelato dopo warmup) Ken_grasso — rank={RANK}  device={DEVICE}")
+    print(f"  Warm start: {args.wlista_ckpt}")
+    print(f"  Fase B: {PHASE_B_EPOCHS} ep (solo U,V,mu — W e lambda congelati)")
+    print(f"  Fase C: {PHASE_C_EPOCHS} ep (joint, LR x{LR_C_SCALE})")
+    print(f"  Train idx {base.TRAIN_IDX}   Val idx {base.VAL_IDX}")
+    print("=" * 68)
+
+    b_tr_np, z_tr_np, k, omega, rx_ref = base.load_synthetic_dataset("wlista")
+    op = build_operator_fast(rx_ref, k, omega)
+    b_va_np, z_va_np = base.load_validation_data(rx_ref, k)
+
+    if args.infer_only:
+        ck    = torch.load(args.infer_only, map_location="cpu", weights_only=False)
+        model = LRWLISTAHolography(K=int(ck["K"]), L_est=L_EST,
+                                   Nx=int(ck["Nx"]), Ny=int(ck["Ny"]), Nz=int(ck["Nz"]),
+                                   M=int(ck["M"]), rank=int(ck["rank"]),
+                                   lambda_init=LAMBDA_INIT)
+        model.load_state_dict(ck["model_state"]); model = model.cpu()
+        loss_history = list(ck.get("loss_history", [ck["loss"]]))
+        print(f"  Loaded phase={ck.get('phase','?')} epoch={ck['epoch']} "
+              f"val={ck.get('val', float('nan')):.4e}")
+    else:
+        b_tr = [torch.as_tensor(x).to(DEVICE) for x in b_tr_np]
+        z_tr = [torch.as_tensor(x).to(DEVICE) for x in z_tr_np]
+        b_va = [torch.as_tensor(x).to(DEVICE) for x in b_va_np]
+        z_va = [torch.as_tensor(x).to(DEVICE) for x in z_va_np]
+
+        model = LRWLISTAHolography(K=K, L_est=L_EST, Nx=NX, Ny=NY, Nz=NZ,
+                                   M=op.N_rx, rank=RANK,
+                                   lambda_init=LAMBDA_INIT).to(DEVICE)
+
+        # ---- FASE A: warm start dal checkpoint W-LISTA ----
+        if args.skip_b is None:
+            if not os.path.exists(args.wlista_ckpt):
+                raise FileNotFoundError(
+                    f"Checkpoint W-LISTA non trovato: {args.wlista_ckpt}\n"
+                    f"Esegui prima run_wlista_ken_grasso.py")
+            ck_w = torch.load(args.wlista_ckpt, map_location=DEVICE, weights_only=False)
+            assert int(ck_w["K"]) == K, \
+                f"K del checkpoint ({ck_w['K']}) != K corrente ({K})"
+            missing, unexpected = model.load_state_dict(ck_w["model_state"], strict=False)
+            assert all(m.startswith(("U_", "V_")) for m in missing), missing
+            assert not unexpected, unexpected
+            v_a, vz_a = evaluate(model, op, b_va, z_va)
+            print(f"\n[FASE A] warm start ok (U=0 → identico a W-LISTA). "
+                  f"val={v_a:.4e} val_z={vz_a:.3e}")
+
+            # ---- FASE B: solo U, V (+ mu); W e lambda CONGELATI ----
+            frozen = ["log_wx", "log_wy", "log_wz"]
+            if FREEZE_LAMBDA_B:
+                frozen.append("log_lambda")
+            set_requires_grad(model, frozen, False)
+            optim_b = torch.optim.Adam([
+                {"params": [model.log_mu], "lr": LR_MU_B},
+                {"params": [model.U_re, model.U_im,
+                            model.V_re, model.V_im], "lr": LR_LR},
+            ])
+            best_b, hist_b, val_b = train_phase(
+                model, op, optim_b, b_tr, z_tr, b_va, z_va,
+                PHASE_B_EPOCHS, "B", ckpt_name)
+            ck_b = torch.load(best_b, map_location=DEVICE, weights_only=False)
+            model.load_state_dict(ck_b["model_state"])
+            loss_history = hist_b
+        else:
+            ck_b = torch.load(args.skip_b, map_location=DEVICE, weights_only=False)
+            model.load_state_dict(ck_b["model_state"])
+            loss_history = list(ck_b.get("loss_history", []))
+            val_b = ck_b.get("best_val", float("inf"))
+            print(f"\n[FASE B] saltata, caricato {args.skip_b}  (val={val_b:.4e})")
+
+        # ---- FASE C: fine-tune congiunto a LR ridotte (opzionale) ----
+        if PHASE_C_EPOCHS > 0:
+            set_requires_grad(model, ["log_wx", "log_wy", "log_wz",
+                                      "log_lambda", "log_mu"], True)
+            optim_c = torch.optim.Adam([
+                {"params": [model.log_mu, model.log_lambda],
+                 "lr": LR_BASE * LR_C_SCALE},
+                {"params": [model.log_wx, model.log_wy, model.log_wz],
+                 "lr": LR_W_BASE * LR_C_SCALE},
+                {"params": [model.U_re, model.U_im, model.V_re, model.V_im],
+                 "lr": LR_LR * LR_C_SCALE},
+            ])
+            best_c, hist_c, val_c = train_phase(
+                model, op, optim_c, b_tr, z_tr, b_va, z_va,
+                PHASE_C_EPOCHS, "C", ckpt_name)
+            if val_c < val_b:
+                ck_c = torch.load(best_c, map_location=DEVICE, weights_only=False)
+                model.load_state_dict(ck_c["model_state"])
+                print(f"\n  Fase C migliora: {val_b:.4e} -> {val_c:.4e}")
+            else:
+                print(f"\n  Fase C NON migliora ({val_c:.4e} >= {val_b:.4e}): "
+                      f"tengo best di fase B")
+            loss_history = loss_history + hist_c
+
+        model = model.cpu()
+
+    train_labels = [base.POS_LABELS[i] for i in base.TRAIN_IDX]
+    base.plot_results(b_tr_np, z_tr_np, train_labels, model, op, loss_history,
+                      "wlista", ckpt_name, split_tag="train")
+    val_labels = [base.POS_LABELS[i] for i in base.VAL_IDX]
+    base.plot_results(b_va_np, z_va_np, val_labels, model, op, loss_history,
+                      "wlista", ckpt_name, split_tag="val")
+
+    print(f"\nTotal elapsed: {(time.time()-t_start)/60:.1f} min\nDone.")
