@@ -44,7 +44,7 @@ tail -f /workspace/wlista_export_new_machine2/wlista_ken_grasso.log
 ## 3. LR-W-LISTA — joint training
 
 ```bash
-nohup python3 run_lowrank_ken_grasso.py --rank 16 > lowrank_ken_grasso.log 2>&1 &
+nohup python3 run_lowrank_ken_grasso.py --rank 8 > lowrank_ken_grasso.log 2>&1 &
 tail -f lowrank_ken_grasso.log
 # da un'altra cartella / dopo aver chiuso e riaperto il terminale:
 tail -f /workspace/wlista_export_new_machine2/lowrank_ken_grasso.log
@@ -64,6 +64,35 @@ nohup python3 run_wlista_lowrank_wfirst_ken_grasso.py \
 tail -f wfirst_ken_grasso.log
 # da un'altra cartella / dopo aver chiuso e riaperto il terminale:
 tail -f /workspace/wlista_export_new_machine2/wfirst_ken_grasso.log
+```
+
+---
+
+## 5. Inferenza su tutte le epoche e tutte le posizioni
+
+Per ciascun modello, cicla su TUTTI i checkpoint d'epoca disponibili e su TUTTE
+le 11 posizioni del dataset Ken_grasso. Per ogni coppia (epoca, posizione)
+salva 3 file (`.png`, `.mat`, `.npz`) + un `metrics.csv` aggregato
+(data-consistency, signal/clutter, MSE) in `results_inference_ken_grasso/<prefix>/`.
+
+```bash
+# LISTA (caso base)
+nohup bash run_inference_sweep_lista_ken_grasso.sh > inference_sweep_lista.log 2>&1 &
+
+# W-LISTA + LR-W-LISTA joint (rank=8)
+nohup bash run_inference_sweep_wlista_ken_grasso.sh > inference_sweep_wlista.log 2>&1 &
+
+# LR-W-LISTA W-FIRST (rank=8)
+nohup bash run_inference_sweep_wfirst_ken_grasso.sh > inference_sweep_wfirst.log 2>&1 &
+```
+
+> ⚠️ Genera molti file (epoche × 11 posizioni × 3 file). Lancia uno sweep alla
+> volta se la GPU/disco sono condivisi con un training in corso.
+
+Per un singolo modello/prefisso, con controllo granulare:
+```bash
+python3 loop_inference_ken_grasso.py --prefix wlista_lowrank_ken_grasso_r8 \
+    --ckpt-dir checkpoints_lista_lowrank_ken_grasso --start-epoch 1
 ```
 
 ---

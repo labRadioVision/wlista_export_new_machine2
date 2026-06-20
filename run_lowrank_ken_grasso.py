@@ -7,7 +7,7 @@ LR-W-LISTA su E_total_Ken_grasso_nowalls.mat (dati sintetici FEKO, PEC senza mur
 Copia questo file nella stessa cartella degli altri moduli ed esegui:
 
     python run_lowrank_ken_grasso.py > lowrank_ken_grasso.log 2>&1
-    python run_lowrank_ken_grasso.py --rank 16 --resume checkpoints_lista_lowrank_ken_grasso/wlista_lowrank_ken_grasso_r16_ep005.pt
+    python run_lowrank_ken_grasso.py --rank 8 --resume checkpoints_lista_lowrank_ken_grasso/wlista_lowrank_ken_grasso_r8_ep005.pt
 
 Il file E_total_Ken_grasso_nowalls.mat deve essere in Dataset TUM/sinthetic_data/
 (sottocartella della cartella in cui si trova questo script).
@@ -79,7 +79,7 @@ LR_W        = base.LR_W
 LAMBDA_INIT = base.LAMBDA_INIT
 L_EST       = base.L_EST
 
-RANK      = 16
+RANK      = 8
 LR_LR     = 1e-2
 ALPHA_Z   = 1.0
 BETA_DATA = 1e-4

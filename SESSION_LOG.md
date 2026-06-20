@@ -11,11 +11,26 @@ Script in `wlista_export_new_machine2/` per dataset sintetico Ken_grasso:
 |--------|---------|------|
 | `run_lista_ken_grasso.py` | LISTA plain (caso base) | nessun peso per-asse, nessuna correzione low-rank |
 | `run_wlista_ken_grasso.py` | W-LISTA baseline | da lanciare per primo |
-| `run_lowrank_ken_grasso.py` | LR-W-LISTA (rank=16) | joint training |
+| `run_lowrank_ken_grasso.py` | LR-W-LISTA (rank=8) | joint training |
 | `run_wlista_lowrank_wfirst_ken_grasso.py` | LR-W-LISTA W-FIRST | warmup W-only, poi UV |
 | `convert_wlista_to_wfirst_ken_grasso.py` | — | converte ckpt W-LISTA → wfirst |
+| `loop_inference_ken_grasso.py` | — | inferenza su tutte le epoche/posizioni (auto-detect modello) |
+| `run_inference_sweep_lista_ken_grasso.sh` | — | wrapper sweep per LISTA |
+| `run_inference_sweep_wlista_ken_grasso.sh` | — | wrapper sweep per W-LISTA + LR-W-LISTA joint |
+| `run_inference_sweep_wfirst_ken_grasso.sh` | — | wrapper sweep per LR-W-LISTA W-FIRST |
 
 > ⚠️ Il file `run_wlista_lowrank_phased_ken_grasso.py` è un esperimento non testato (approccio alternativo, fasi separate). Non includerlo nei run principali.
+
+**Inferenza (`loop_inference_ken_grasso.py`):** ispirato a `loop_inference_synthetic.py`
+in `holography_scripts/`. Riusa `inference_common.py` (`build_model` con
+auto-detect LISTA/W-LISTA/LR-W-LISTA, `build_operator`, `run_model`,
+baseline MF/ISTA, `metrics`, `plot_panels`, `save_outputs`). Differenza
+principale: cicla su TUTTE le 11 posizioni (non una sola di riferimento),
+perche' per Ken_grasso lo z_true e' disponibile per ognuna (body model).
+Output per ogni (epoca, posizione): `.png` (pannelli GT/MF/ISTA/modello),
+`.mat` e `.npz` (volumi + MIP + metriche), in
+`results_inference_ken_grasso/<prefix>/`, con `metrics.csv` aggregato
+(data_consistency, signal_clutter, mse_full, mse_occ, mse_bg).
 
 **Differenze rispetto agli script in `holography_scripts/`:**
 - `SCRIPT_DIR` punta alla cartella dello script stesso (non a holography_scripts)
