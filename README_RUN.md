@@ -28,6 +28,8 @@ Carica via Jupyter Upload in `Dataset TUM/sinthetic_data/`:
 ```bash
 nohup python3 run_lista_ken_grasso.py > lista_ken_grasso.log 2>&1 &
 tail -f lista_ken_grasso.log
+# da un'altra cartella / dopo aver chiuso e riaperto il terminale:
+tail -f /workspace/wlista_export_new_machine2/lista_ken_grasso.log
 ```
 
 ## 2. W-LISTA (baseline con pesi per-asse)
@@ -35,6 +37,8 @@ tail -f lista_ken_grasso.log
 ```bash
 nohup python3 run_wlista_ken_grasso.py > wlista_ken_grasso.log 2>&1 &
 tail -f wlista_ken_grasso.log
+# da un'altra cartella / dopo aver chiuso e riaperto il terminale:
+tail -f /workspace/wlista_export_new_machine2/wlista_ken_grasso.log
 ```
 
 ## 3. LR-W-LISTA — joint training
@@ -42,6 +46,8 @@ tail -f wlista_ken_grasso.log
 ```bash
 nohup python3 run_lowrank_ken_grasso.py --rank 16 > lowrank_ken_grasso.log 2>&1 &
 tail -f lowrank_ken_grasso.log
+# da un'altra cartella / dopo aver chiuso e riaperto il terminale:
+tail -f /workspace/wlista_export_new_machine2/lowrank_ken_grasso.log
 ```
 
 ## 4. LR-W-LISTA — W-FIRST (warm start da W-LISTA)
@@ -56,6 +62,8 @@ nohup python3 run_wlista_lowrank_wfirst_ken_grasso.py \
     --warmup 0 \
     > wfirst_ken_grasso.log 2>&1 &
 tail -f wfirst_ken_grasso.log
+# da un'altra cartella / dopo aver chiuso e riaperto il terminale:
+tail -f /workspace/wlista_export_new_machine2/wfirst_ken_grasso.log
 ```
 
 ---
