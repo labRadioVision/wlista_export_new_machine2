@@ -9,6 +9,7 @@ Script in `wlista_export_new_machine2/` per dataset sintetico Ken_grasso:
 
 | Script | Modello | Note |
 |--------|---------|------|
+| `run_lista_ken_grasso.py` | LISTA plain (caso base) | nessun peso per-asse, nessuna correzione low-rank |
 | `run_wlista_ken_grasso.py` | W-LISTA baseline | da lanciare per primo |
 | `run_lowrank_ken_grasso.py` | LR-W-LISTA (rank=16) | joint training |
 | `run_wlista_lowrank_wfirst_ken_grasso.py` | LR-W-LISTA W-FIRST | warmup W-only, poi UV |
