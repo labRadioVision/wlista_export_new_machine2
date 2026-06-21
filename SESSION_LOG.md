@@ -13,20 +13,24 @@ Script in `wlista_export_new_machine2/` per dataset sintetico Ken_grasso:
 | `run_wlista_ken_grasso.py` | W-LISTA baseline | da lanciare per primo |
 | `run_lowrank_ken_grasso.py` | LR-W-LISTA (rank=8) | joint training |
 | `run_wlista_lowrank_wfirst_ken_grasso.py` | LR-W-LISTA W-FIRST | warmup W-only, poi tutto insieme (W NON si congela) |
-| `run_wlista_lowrank_phased_ken_grasso.py` | LR-W-LISTA PHASED | warm start da W-LISTA, poi W congelato — solo U,V,mu |
-| `convert_wlista_to_wfirst_ken_grasso.py` | — | converte ckpt W-LISTA → wfirst/phased (stesso formato) |
+| `run_wlista_lowrank_phased_ken_grasso.py` | LR-W-LISTA PHASED | Fase A allena W da zero, poi congelato — solo U,V,mu |
+| `convert_wlista_to_wfirst_ken_grasso.py` | — | converte ckpt W-LISTA → wfirst (solo per wfirst, non serve a phased) |
 | `loop_inference_ken_grasso.py` | — | inferenza su tutte le epoche/posizioni (auto-detect modello) |
 | `run_inference_sweep_lista_ken_grasso.sh` | — | wrapper sweep per LISTA |
 | `run_inference_sweep_wlista_ken_grasso.sh` | — | wrapper sweep per W-LISTA + LR-W-LISTA joint |
 | `run_inference_sweep_wfirst_ken_grasso.sh` | — | wrapper sweep per LR-W-LISTA W-FIRST |
 
-**wfirst vs phased:** entrambi fanno warm start da un checkpoint W-LISTA, ma
-dopo il warmup wfirst continua ad allenare W insieme a UV (puo' essere instabile:
-osservato collasso di z a epoca 7 con LR_W alto), mentre phased CONGELA W e
-allena solo `U,V,log_mu` (fase B), con un'eventuale fase C di fine-tune
-congiunto a LR ridotte. **phased e' la scelta piu' stabile**, consigliata
-dopo il collasso osservato in wfirst con i LR originali (gia' corretti, vedi
-sotto, ma phased resta una protezione aggiuntiva).
+**wfirst vs phased:** wfirst richiede un checkpoint W-LISTA pre-esistente
+(via `convert_wlista_to_wfirst_ken_grasso.py`) e dopo il warmup continua ad
+allenare W insieme a UV (puo' essere instabile: osservato collasso di z a
+epoca 7 con LR_W alto). **phased e' autonomo**: la Fase A allena W **da
+zero, dentro lo stesso script** (U,V congelati a zero durante la Fase A —
+matematicamente equivalente a W-LISTA puro, nessun checkpoint esterno
+richiesto), poi la Fase B CONGELA W e allena solo `U,V,log_mu` con
+`LR_LR=1e-3` (basso: la correzione low-rank e' un raffinamento fine, non va
+spinto forte), infine una Fase C opzionale di fine-tune congiunto a LR
+ulteriormente ridotte. **phased e' la scelta consigliata** dopo il collasso
+osservato in wfirst.
 
 **Inferenza (`loop_inference_ken_grasso.py`):** ispirato a `loop_inference_synthetic.py`
 in `holography_scripts/`. Riusa `inference_common.py` (`build_model` con

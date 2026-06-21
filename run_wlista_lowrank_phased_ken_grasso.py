@@ -5,15 +5,21 @@ run_wlista_lowrank_phased_ken_grasso.py
 LR-W-LISTA "phased" su E_total_Ken_grasso_nowalls.mat — alternativa più
 stabile a run_wlista_lowrank_wfirst_ken_grasso.py.
 
-Differenza chiave rispetto a wfirst: dopo il warmup, W (log_wx/wy/wz) e
-log_lambda vengono CONGELATI — si allenano solo U, V (+ log_mu). In wfirst
-invece tutti i parametri restano allenabili insieme dopo il warmup, il che
-puo' causare instabilita'/collasso di z quando UV si attiva (osservato a
-epoca 7 con LR_W alto).
+Differenza chiave rispetto a wfirst: dopo la fase di training di W, W
+(log_wx/wy/wz) e log_lambda vengono CONGELATI — si allenano solo U, V (+
+log_mu). In wfirst invece tutti i parametri restano allenabili insieme dopo
+il warmup, il che puo' causare instabilita'/collasso di z quando UV si
+attiva (osservato a epoca 7 con LR_W alto).
+
+A differenza della prima versione, questo script NON richiede un checkpoint
+W-LISTA pre-esistente: la fase A allena W **da zero**, dentro lo stesso
+script, con U/V congelati a zero (matematicamente equivalente a allenare
+W-LISTA puro). Non serve quindi lanciare prima run_wlista_ken_grasso.py.
 
 Fasi
 ----
-  A) Warm start dal checkpoint W-LISTA gia' addestrato (U=0 -> identico a W-LISTA).
+  A) Allena SOLO log_mu, log_lambda, log_wx/wy/wz da zero (U,V congelati a
+     zero -> equivalente a W-LISTA puro). PHASE_A_EPOCHS epoche.
   B) Congelati log_wx/wy/wz e log_lambda: allena solo U, V, log_mu.
   C) (opzionale) Fine-tune congiunto di tutti i parametri a LR ridotte.
 
@@ -21,11 +27,7 @@ Run
 ---
     nohup python3 run_wlista_lowrank_phased_ken_grasso.py > phased_ken_grasso.log 2>&1 &
 
-    # con checkpoint W-LISTA esplicito
-    python3 run_wlista_lowrank_phased_ken_grasso.py \\
-        --wlista-ckpt checkpoints_lista_ken_grasso/wlista_ken_grasso_best.pt
-
-    # salta fase B (riparti da un checkpoint di fase B gia' fatto)
+    # salta fase A+B (riparti da un checkpoint di fase B gia' fatto)
     python3 run_wlista_lowrank_phased_ken_grasso.py \\
         --skip-b checkpoints_lista_lowrank_phased_ken_grasso/wlista_lowrank_phased_ken_grasso_r8_B_best.pt
 
@@ -87,10 +89,6 @@ os.makedirs(CKPT_DIR, exist_ok=True)
 base.OUT_DIR  = OUT_DIR
 base.CKPT_DIR = CKPT_DIR
 
-# Default checkpoint W-LISTA prodotto da run_wlista_ken_grasso.py
-WLISTA_CKPT_DEFAULT = os.path.join(
-    SCRIPT_DIR, "checkpoints_lista_ken_grasso", "wlista_ken_grasso_best.pt")
-
 # ---------------------------------------------------------------------------
 # Iperparametri
 # ---------------------------------------------------------------------------
@@ -105,9 +103,10 @@ LR_BASE   = 1e-2
 LR_W_BASE = 1e-1
 
 RANK            = 8
+PHASE_A_EPOCHS  = base.N_EPOCHS   # training W da zero (UV congelati a zero)
 PHASE_B_EPOCHS  = 20
 PHASE_C_EPOCHS  = 10
-LR_LR           = 1e-2       # U, V  (fase B)
+LR_LR           = 1e-3       # U, V  (fase B) — basso: UV e' una correzione fine, non va spinto forte
 LR_MU_B         = 1e-2       # log_mu in fase B
 LR_C_SCALE      = 0.1        # scala LR fase C rispetto a LR_BASE/LR_W_BASE
 FREEZE_LAMBDA_B = True       # log_lambda congelato anche in fase B (oltre a W)
@@ -242,9 +241,10 @@ def train_phase(model, op, optim, b_tr, z_tr, b_va, z_va,
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--rank",        type=int, default=RANK)
-    ap.add_argument("--wlista-ckpt", default=WLISTA_CKPT_DEFAULT)
+    ap.add_argument("--skip-a",      default=None,
+                    help="checkpoint da cui partire saltando la fase A (gia' allenato W)")
     ap.add_argument("--skip-b",      default=None,
-                    help="checkpoint da cui partire saltando la fase B")
+                    help="checkpoint da cui partire saltando le fasi A+B")
     ap.add_argument("--infer-only",  default=None)
     args = ap.parse_args()
     RANK      = args.rank
@@ -252,8 +252,8 @@ if __name__ == "__main__":
 
     t_start = time.time()
     print("=" * 68)
-    print(f"LR-W-LISTA PHASED (W congelato dopo warmup) Ken_grasso — rank={RANK}  device={DEVICE}")
-    print(f"  Warm start: {args.wlista_ckpt}")
+    print(f"LR-W-LISTA PHASED (W allenato da zero, poi congelato) Ken_grasso — rank={RANK}  device={DEVICE}")
+    print(f"  Fase A: {PHASE_A_EPOCHS} ep (solo mu,lambda,W — U,V congelati a zero)")
     print(f"  Fase B: {PHASE_B_EPOCHS} ep (solo U,V,mu — W e lambda congelati)")
     print(f"  Fase C: {PHASE_C_EPOCHS} ep (joint, LR x{LR_C_SCALE})")
     print(f"  Train idx {base.TRAIN_IDX}   Val idx {base.VAL_IDX}")
@@ -283,27 +283,41 @@ if __name__ == "__main__":
                                    M=op.N_rx, rank=RANK,
                                    lambda_init=LAMBDA_INIT).to(DEVICE)
 
-        # ---- FASE A: warm start dal checkpoint W-LISTA ----
-        if args.skip_b is None:
-            if not os.path.exists(args.wlista_ckpt):
-                raise FileNotFoundError(
-                    f"Checkpoint W-LISTA non trovato: {args.wlista_ckpt}\n"
-                    f"Esegui prima run_wlista_ken_grasso.py")
-            ck_w = torch.load(args.wlista_ckpt, map_location=DEVICE, weights_only=False)
-            assert int(ck_w["K"]) == K, \
-                f"K del checkpoint ({ck_w['K']}) != K corrente ({K})"
-            missing, unexpected = model.load_state_dict(ck_w["model_state"], strict=False)
-            assert all(m.startswith(("U_", "V_")) for m in missing), missing
-            assert not unexpected, unexpected
-            v_a, vz_a = evaluate(model, op, b_va, z_va)
-            print(f"\n[FASE A] warm start ok (U=0 → identico a W-LISTA). "
-                  f"val={v_a:.4e} val_z={vz_a:.3e}")
+        if args.skip_b is not None:
+            # ---- salta A+B: carica direttamente un checkpoint di fase B ----
+            ck_b = torch.load(args.skip_b, map_location=DEVICE, weights_only=False)
+            model.load_state_dict(ck_b["model_state"])
+            loss_history = list(ck_b.get("loss_history", []))
+            val_b = ck_b.get("best_val", float("inf"))
+            print(f"\n[FASE A+B] saltate, caricato {args.skip_b}  (val={val_b:.4e})")
+        else:
+            if args.skip_a is not None:
+                # ---- salta A: carica un checkpoint di fase A gia' allenato ----
+                ck_a = torch.load(args.skip_a, map_location=DEVICE, weights_only=False)
+                model.load_state_dict(ck_a["model_state"])
+                hist_a = list(ck_a.get("loss_history", []))
+                print(f"\n[FASE A] saltata, caricato {args.skip_a}")
+            else:
+                # ---- FASE A: allena SOLO mu, lambda, W da zero ----
+                # U,V congelati a zero (init di default) -> equivalente a W-LISTA puro
+                set_requires_grad(model, ["U_re", "U_im", "V_re", "V_im"], False)
+                optim_a = torch.optim.Adam([
+                    {"params": [model.log_mu, model.log_lambda], "lr": LR_BASE},
+                    {"params": [model.log_wx, model.log_wy, model.log_wz], "lr": LR_W_BASE},
+                ])
+                best_a, hist_a, val_a = train_phase(
+                    model, op, optim_a, b_tr, z_tr, b_va, z_va,
+                    PHASE_A_EPOCHS, "A", ckpt_name)
+                ck_a = torch.load(best_a, map_location=DEVICE, weights_only=False)
+                model.load_state_dict(ck_a["model_state"])
+                print(f"\n[FASE A] completata (W allenato da zero, U=0).  best_val={val_a:.4e}")
 
             # ---- FASE B: solo U, V (+ mu); W e lambda CONGELATI ----
             frozen = ["log_wx", "log_wy", "log_wz"]
             if FREEZE_LAMBDA_B:
                 frozen.append("log_lambda")
             set_requires_grad(model, frozen, False)
+            set_requires_grad(model, ["U_re", "U_im", "V_re", "V_im"], True)
             optim_b = torch.optim.Adam([
                 {"params": [model.log_mu], "lr": LR_MU_B},
                 {"params": [model.U_re, model.U_im,
@@ -314,13 +328,7 @@ if __name__ == "__main__":
                 PHASE_B_EPOCHS, "B", ckpt_name)
             ck_b = torch.load(best_b, map_location=DEVICE, weights_only=False)
             model.load_state_dict(ck_b["model_state"])
-            loss_history = hist_b
-        else:
-            ck_b = torch.load(args.skip_b, map_location=DEVICE, weights_only=False)
-            model.load_state_dict(ck_b["model_state"])
-            loss_history = list(ck_b.get("loss_history", []))
-            val_b = ck_b.get("best_val", float("inf"))
-            print(f"\n[FASE B] saltata, caricato {args.skip_b}  (val={val_b:.4e})")
+            loss_history = hist_a + hist_b
 
         # ---- FASE C: fine-tune congiunto a LR ridotte (opzionale) ----
         if PHASE_C_EPOCHS > 0:

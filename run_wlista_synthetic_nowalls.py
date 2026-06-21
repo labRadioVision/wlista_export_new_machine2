@@ -127,7 +127,7 @@ L_EST       = 1.141e4   # riusa stima dal dataset reale (stessa geometria)
 
 # W-LISTA only
 LR_W        = 5e-1
-W_LOG_CLAMP = 5.0
+W_LOG_CLAMP = 4.0
 
 # Contrasto dielettrico (tessuto soft/muscolo a 2.45 GHz)
 DELTA_Z = complex(1.5297, 0.0)

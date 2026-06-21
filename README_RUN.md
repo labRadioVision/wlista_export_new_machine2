@@ -70,7 +70,10 @@ tail -f /workspace/wlista_export_new_machine2/wfirst_ken_grasso.log
 > essere instabile (collasso di z osservato a epoca 7). Se succede, usa il
 > phased qui sotto (più stabile: congela W dopo il warm start).
 
-## 4bis. LR-W-LISTA — PHASED (warm start da W-LISTA, W congelato — più stabile)
+## 4bis. LR-W-LISTA — PHASED (autonomo, W congelato dopo fase A — più stabile)
+
+Non richiede un checkpoint W-LISTA pre-esistente: la fase A allena W **da
+zero**, dentro lo stesso script.
 
 ```bash
 nohup python3 run_wlista_lowrank_phased_ken_grasso.py > phased_ken_grasso.log 2>&1 &
@@ -79,9 +82,15 @@ tail -f phased_ken_grasso.log
 tail -f /workspace/wlista_export_new_machine2/phased_ken_grasso.log
 ```
 
-Fasi automatiche: A (warm start da `checkpoints_lista_ken_grasso/wlista_ken_grasso_best.pt`),
-B (20 epoche, solo U/V/mu — W e lambda congelati), C (10 epoche, fine-tune
-congiunto a LR ridotte, opzionale — tenuto solo se migliora il val di fase B).
+Fasi automatiche:
+- **A** (30 epoche, solo mu/lambda/W — U,V congelati a zero: equivalente a W-LISTA puro)
+- **B** (20 epoche, solo U/V/mu — W e lambda congelati, `LR_LR=1e-3`)
+- **C** (10 epoche, fine-tune congiunto a LR ulteriormente ridotte, opzionale — tenuto solo se migliora il val di fase B)
+
+Per saltare la fase A (se hai già un checkpoint di fase A):
+```bash
+python3 run_wlista_lowrank_phased_ken_grasso.py --skip-a checkpoints_lista_lowrank_phased_ken_grasso/wlista_lowrank_phased_ken_grasso_r8_A_best.pt
+```
 
 ---
 
