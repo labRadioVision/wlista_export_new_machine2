@@ -184,6 +184,11 @@ def train_phase(model, op, optim, b_tr, z_tr, b_va, z_va,
     else:
         z_ref = z_tr[0].detach().cpu().numpy()
 
+    # baseline MF + ISTA per il caso di riferimento: una sola volta per fase
+    b_ref_np   = b_ref.detach().cpu().numpy()
+    z_mf_ref   = ic.run_matched_filter(op, b_ref_np)
+    z_ista_ref = ic.run_ista(op, b_ref_np, K, LAMBDA_INIT, L_EST)
+
     trainable = [n for n, p in model.named_parameters() if p.requires_grad]
     print(f"\n[FASE {phase_tag}] epochs={n_epochs}  trainable={trainable}")
 
@@ -219,7 +224,8 @@ def train_phase(model, op, optim, b_tr, z_tr, b_va, z_va,
             z_snap = model(b_ref, op, warm_start=True).detach().cpu().numpy()
         ic.save_epoch_snapshot(REF_DIR, f"{ckpt_name}_{phase_tag}", epoch,
                                base.X_IMG, base.Y_IMG, base.Z_IMG,
-                               z_snap, z_true=z_ref)
+                               z_snap, z_true=z_ref,
+                               z_mf=z_mf_ref, z_ista=z_ista_ref)
 
         ckpt = dict(epoch=epoch, phase=phase_tag, K=K,
                     Nx=NX, Ny=NY, Nz=NZ, M=model.M, rank=model.rank,
