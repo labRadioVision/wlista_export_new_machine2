@@ -110,6 +110,9 @@ nohup bash run_inference_sweep_wlista_ken_grasso.sh > inference_sweep_wlista.log
 
 # LR-W-LISTA W-FIRST (rank=8)
 nohup bash run_inference_sweep_wfirst_ken_grasso.sh > inference_sweep_wfirst.log 2>&1 &
+
+# LR-W-LISTA PHASED (rank=8) — separato per fase A/B/C
+nohup bash run_inference_sweep_phased_ken_grasso.sh > inference_sweep_phased.log 2>&1 &
 ```
 
 > ⚠️ Genera molti file (epoche × 11 posizioni × 3 file). Lancia uno sweep alla

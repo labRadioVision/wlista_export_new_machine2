@@ -19,6 +19,7 @@ Script in `wlista_export_new_machine2/` per dataset sintetico Ken_grasso:
 | `run_inference_sweep_lista_ken_grasso.sh` | — | wrapper sweep per LISTA |
 | `run_inference_sweep_wlista_ken_grasso.sh` | — | wrapper sweep per W-LISTA + LR-W-LISTA joint |
 | `run_inference_sweep_wfirst_ken_grasso.sh` | — | wrapper sweep per LR-W-LISTA W-FIRST |
+| `run_inference_sweep_phased_ken_grasso.sh` | — | wrapper sweep per LR-W-LISTA PHASED (fasi A/B/C separate) |
 
 **wfirst vs phased:** wfirst richiede un checkpoint W-LISTA pre-esistente
 (via `convert_wlista_to_wfirst_ken_grasso.py`) e dopo il warmup continua ad
