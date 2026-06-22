@@ -84,7 +84,7 @@ LR_W_BASE = 1e-1
 
 RANK            = 8
 PHASE_A_EPOCHS  = 10              # training W da zero (UV congelati a zero)
-PHASE_B_EPOCHS  = 20
+PHASE_B_EPOCHS  = 10
 PHASE_C_EPOCHS  = 10
 LR_LR           = 1e-3       # U, V  (fase B) — basso: UV e' una correzione fine, non va spinto forte
 LR_MU_B         = 1e-2       # log_mu in fase B
