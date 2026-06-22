@@ -94,6 +94,26 @@ python3 run_wlista_lowrank_phased_ken_grasso.py --skip-a checkpoints_lista_lowra
 
 ---
 
+## 4ter. LR-W-LISTA — PHASED su caso synthetic nowalls (PEC/freespace)
+
+Stesso schema di 4bis ma sul caso base `E_total_Ken_PEC_nowalls.mat` +
+`E_total_freespace_nowalls.mat` (non Ken_grasso) — già bundled, nessun
+upload aggiuntivo richiesto. Train=tutte le 11 posizioni, val=pos 7
+(stesso split usato da `run_wlista_synthetic_nowalls_gpu.py`, per confronto
+diretto LISTA/W-LISTA vs LR-W-LISTA su questo caso).
+
+```bash
+nohup python3 run_wlista_lowrank_phased_synthetic_nowalls.py > phased_synthetic_nowalls.log 2>&1 &
+tail -f phased_synthetic_nowalls.log
+```
+
+Per saltare la fase A (se hai già un checkpoint di fase A):
+```bash
+python3 run_wlista_lowrank_phased_synthetic_nowalls.py --skip-a checkpoints_lista_lowrank_phased_synthetic_nowalls/wlista_lowrank_phased_nowalls_r8_A_best.pt
+```
+
+---
+
 ## 5. Inferenza su tutte le epoche e tutte le posizioni
 
 Per ciascun modello, cicla su TUTTI i checkpoint d'epoca disponibili e su TUTTE
@@ -113,6 +133,12 @@ nohup bash run_inference_sweep_wfirst_ken_grasso.sh > inference_sweep_wfirst.log
 
 # LR-W-LISTA PHASED (rank=8) — separato per fase A/B/C
 nohup bash run_inference_sweep_phased_ken_grasso.sh > inference_sweep_phased.log 2>&1 &
+
+# LISTA + W-LISTA plain su caso synthetic nowalls (PEC/freespace)
+nohup bash run_inference_sweep_synthetic_nowalls_gpu.sh > inference_sweep_synthetic_nowalls_gpu.log 2>&1 &
+
+# LR-W-LISTA PHASED su caso synthetic nowalls (PEC/freespace, rank=8) — fase A/B/C
+nohup bash run_inference_sweep_phased_synthetic_nowalls.sh > inference_sweep_phased_synthetic_nowalls.log 2>&1 &
 ```
 
 > ⚠️ Genera molti file (epoche × 11 posizioni × 3 file). Lancia uno sweep alla

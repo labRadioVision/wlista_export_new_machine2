@@ -119,3 +119,39 @@ holo_z = 3.317 - FEKO_x
 ```
 
 Imaging grid: X[0-5] (161), Y[0-2.5] (81), Z[0.3-2.3] (65).
+
+## Implementation status per case — what's missing
+
+Two datasets/cases in the repo: **Ken_grasso** (`E_total_Ken_grasso_nowalls.mat`)
+and **Ken_nowalls** (PEC/freespace — `E_total_Ken_PEC_nowalls.mat` +
+`E_total_freespace_nowalls.mat`, the one bundled by default in this
+folder). Ken_grasso already has every variant implemented; Ken_nowalls is
+behind.
+
+| Variant | Ken_grasso | Ken_nowalls (PEC/freespace) |
+|---|---|---|
+| LISTA plain | `run_lista_ken_grasso.py` | `run_wlista_synthetic_nowalls_gpu.py --model lista` ✓ |
+| W-LISTA | `run_wlista_ken_grasso.py` | `run_wlista_synthetic_nowalls_gpu.py --model wlista` ✓ |
+| LR-W-LISTA PHASED | `run_wlista_lowrank_phased_ken_grasso.py` | `run_wlista_lowrank_phased_synthetic_nowalls.py` ✓ |
+| Inference sweep — LISTA/W-LISTA plain | `run_inference_sweep_lista_ken_grasso.sh`, `run_inference_sweep_wlista_ken_grasso.sh` | `run_inference_sweep_synthetic_nowalls_gpu.sh` ✓ |
+| Inference sweep — PHASED | `run_inference_sweep_phased_ken_grasso.sh` | `run_inference_sweep_phased_synthetic_nowalls.sh` ✓ |
+
+### Run examples (Ken_nowalls)
+
+```bash
+# LISTA plain
+nohup python3 run_wlista_synthetic_nowalls_gpu.py --model lista > lista_synthetic_nowalls_gpu.log 2>&1 &
+
+# W-LISTA (--model wlista è il default, può anche essere omesso)
+nohup python3 run_wlista_synthetic_nowalls_gpu.py --model wlista > wlista_synthetic_nowalls_gpu.log 2>&1 &
+
+# LR-W-LISTA PHASED (rank=8 di default)
+nohup python3 run_wlista_lowrank_phased_synthetic_nowalls.py > phased_synthetic_nowalls.log 2>&1 &
+```
+
+Per i dettagli (resume, --fresh, --skip-a/--skip-b, ecc.) vedi `README_RUN.md`.
+
+Tutte le varianti previste per Ken_nowalls (LISTA, W-LISTA, LR-W-LISTA
+PHASED + relativi inference sweep) sono coperte. LR-W-LISTA joint e
+W-FIRST non sono previsti per questo caso.
+
