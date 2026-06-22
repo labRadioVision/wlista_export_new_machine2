@@ -83,11 +83,19 @@ tail -f /workspace/wlista_export_new_machine2/phased_ken_grasso.log
 ```
 
 Fasi automatiche:
-- **A** (30 epoche, solo mu/lambda/W — U,V congelati a zero: equivalente a W-LISTA puro)
+- **A** (10 epoche, solo mu/lambda/W — U,V congelati a zero: equivalente a W-LISTA puro)
 - **B** (20 epoche, solo U/V/mu — W e lambda congelati, `LR_LR=1e-3`)
 - **C** (10 epoche, fine-tune congiunto a LR ulteriormente ridotte, opzionale — tenuto solo se migliora il val di fase B)
 
-Per saltare la fase A (se hai già un checkpoint di fase A):
+**Se il training si interrompe a metà di una fase** (es. crash, kill per errore),
+riprendi dall'epoca esatta senza perdere il lavoro fatto:
+```bash
+python3 run_wlista_lowrank_phased_ken_grasso.py --resume-a checkpoints_lista_lowrank_phased_ken_grasso/wlista_lowrank_phased_ken_grasso_r8_A_ep006.pt
+python3 run_wlista_lowrank_phased_ken_grasso.py --resume-b checkpoints_lista_lowrank_phased_ken_grasso/wlista_lowrank_phased_ken_grasso_r8_B_ep012.pt
+python3 run_wlista_lowrank_phased_ken_grasso.py --resume-c checkpoints_lista_lowrank_phased_ken_grasso/wlista_lowrank_phased_ken_grasso_r8_C_ep003.pt
+```
+
+**Se invece una fase è GIÀ COMPLETA** e vuoi saltarla del tutto (vai alla successiva):
 ```bash
 python3 run_wlista_lowrank_phased_ken_grasso.py --skip-a checkpoints_lista_lowrank_phased_ken_grasso/wlista_lowrank_phased_ken_grasso_r8_A_best.pt
 ```

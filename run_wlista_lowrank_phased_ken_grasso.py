@@ -27,9 +27,17 @@ Run
 ---
     nohup python3 run_wlista_lowrank_phased_ken_grasso.py > phased_ken_grasso.log 2>&1 &
 
-    # salta fase A+B (riparti da un checkpoint di fase B gia' fatto)
+    # riprendi una fase interrotta a META' (epoca esatta, non la ripete da zero)
+    python3 run_wlista_lowrank_phased_ken_grasso.py \\
+        --resume-a checkpoints_lista_lowrank_phased_ken_grasso/wlista_lowrank_phased_ken_grasso_r8_A_ep006.pt
+
+    # salta fase A+B (riparti da un checkpoint di fase B GIA' COMPLETA)
     python3 run_wlista_lowrank_phased_ken_grasso.py \\
         --skip-b checkpoints_lista_lowrank_phased_ken_grasso/wlista_lowrank_phased_ken_grasso_r8_B_best.pt
+
+`--skip-a/--skip-b` = la fase e' GIA' FINITA, non rifarla, vai alla successiva.
+`--resume-a/--resume-b/--resume-c` = la fase si era FERMATA A META', continua
+dall'epoca esatta (poi procede normalmente alle fasi successive).
 
 Il file E_total_Ken_grasso_nowalls.mat deve essere in Dataset TUM/sinthetic_data/
 (sottocartella della cartella in cui si trova questo script).
@@ -103,7 +111,7 @@ LR_BASE   = 1e-2
 LR_W_BASE = 1e-1
 
 RANK            = 8
-PHASE_A_EPOCHS  = base.N_EPOCHS   # training W da zero (UV congelati a zero)
+PHASE_A_EPOCHS  = 10              # training W da zero (UV congelati a zero)
 PHASE_B_EPOCHS  = 20
 PHASE_C_EPOCHS  = 10
 LR_LR           = 1e-3       # U, V  (fase B) — basso: UV e' una correzione fine, non va spinto forte
@@ -171,10 +179,28 @@ def set_requires_grad(model, names, flag):
 # Loop di training per una fase
 # ---------------------------------------------------------------------------
 def train_phase(model, op, optim, b_tr, z_tr, b_va, z_va,
-                n_epochs, phase_tag, ckpt_name):
+                n_epochs, phase_tag, ckpt_name, resume=None):
     N = len(b_tr)
-    loss_hist, val_hist, best_val = [], [], float("inf")
+    loss_hist, val_hist, best_val, start_epoch = [], [], float("inf"), 1
     best_path = os.path.join(CKPT_DIR, f"{ckpt_name}_{phase_tag}_best.pt")
+
+    if resume is not None:
+        ck_r = torch.load(resume, map_location=DEVICE, weights_only=False)
+        model.load_state_dict(ck_r["model_state"])
+        if "optim_state" in ck_r:
+            try:
+                optim.load_state_dict(ck_r["optim_state"])
+            except Exception as e:
+                print(f"  [FASE {phase_tag}] optim_state non ripristinato ({e})")
+        start_epoch = ck_r["epoch"] + 1
+        loss_hist   = list(ck_r.get("loss_history", []))
+        val_hist    = list(ck_r.get("val_history", []))
+        best_val    = ck_r.get("best_val", float("inf"))
+        print(f"\n[FASE {phase_tag}] resume da {resume}: riparto da epoca "
+              f"{start_epoch} (best={best_val:.4e})")
+        if start_epoch > n_epochs:
+            print(f"  [FASE {phase_tag}] gia' completa ({start_epoch-1}/{n_epochs}), nessuna epoca da fare.")
+            return best_path, loss_hist, best_val
 
     REF_DIR = os.path.join(OUT_DIR, f"epoch_recon_{phase_tag}")
     os.makedirs(REF_DIR, exist_ok=True)
@@ -190,9 +216,9 @@ def train_phase(model, op, optim, b_tr, z_tr, b_va, z_va,
     z_ista_ref = ic.run_ista(op, b_ref_np, K, LAMBDA_INIT, L_EST)
 
     trainable = [n for n, p in model.named_parameters() if p.requires_grad]
-    print(f"\n[FASE {phase_tag}] epochs={n_epochs}  trainable={trainable}")
+    print(f"\n[FASE {phase_tag}] epochs={start_epoch}->{n_epochs}  trainable={trainable}")
 
-    for epoch in range(1, n_epochs + 1):
+    for epoch in range(start_epoch, n_epochs + 1):
         t0 = time.time(); model.train(); optim.zero_grad()
         agg = torch.zeros((), device=DEVICE)
         lz = ld = lr_ = 0.0
@@ -251,6 +277,12 @@ if __name__ == "__main__":
                     help="checkpoint da cui partire saltando la fase A (gia' allenato W)")
     ap.add_argument("--skip-b",      default=None,
                     help="checkpoint da cui partire saltando le fasi A+B")
+    ap.add_argument("--resume-a",    default=None,
+                    help="continua la fase A da questo checkpoint (epoca esatta, non la salta)")
+    ap.add_argument("--resume-b",    default=None,
+                    help="continua la fase B da questo checkpoint (epoca esatta, non la salta)")
+    ap.add_argument("--resume-c",    default=None,
+                    help="continua la fase C da questo checkpoint (epoca esatta, non la salta)")
     ap.add_argument("--infer-only",  default=None)
     args = ap.parse_args()
     RANK      = args.rank
@@ -313,7 +345,7 @@ if __name__ == "__main__":
                 ])
                 best_a, hist_a, val_a = train_phase(
                     model, op, optim_a, b_tr, z_tr, b_va, z_va,
-                    PHASE_A_EPOCHS, "A", ckpt_name)
+                    PHASE_A_EPOCHS, "A", ckpt_name, resume=args.resume_a)
                 ck_a = torch.load(best_a, map_location=DEVICE, weights_only=False)
                 model.load_state_dict(ck_a["model_state"])
                 print(f"\n[FASE A] completata (W allenato da zero, U=0).  best_val={val_a:.4e}")
@@ -331,7 +363,7 @@ if __name__ == "__main__":
             ])
             best_b, hist_b, val_b = train_phase(
                 model, op, optim_b, b_tr, z_tr, b_va, z_va,
-                PHASE_B_EPOCHS, "B", ckpt_name)
+                PHASE_B_EPOCHS, "B", ckpt_name, resume=args.resume_b)
             ck_b = torch.load(best_b, map_location=DEVICE, weights_only=False)
             model.load_state_dict(ck_b["model_state"])
             loss_history = hist_a + hist_b
@@ -350,7 +382,7 @@ if __name__ == "__main__":
             ])
             best_c, hist_c, val_c = train_phase(
                 model, op, optim_c, b_tr, z_tr, b_va, z_va,
-                PHASE_C_EPOCHS, "C", ckpt_name)
+                PHASE_C_EPOCHS, "C", ckpt_name, resume=args.resume_c)
             if val_c < val_b:
                 ck_c = torch.load(best_c, map_location=DEVICE, weights_only=False)
                 model.load_state_dict(ck_c["model_state"])
