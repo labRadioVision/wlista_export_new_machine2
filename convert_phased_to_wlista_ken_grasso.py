@@ -29,8 +29,12 @@ _args = _ap.parse_args()
 # default src: ultimo checkpoint fase A disponibile
 if _args.src is None:
     import glob, re
-    ckpts = sorted(glob.glob(os.path.join("checkpoints_wlista_lowrank",
-                                           "wlista_lowrank_phased_ken_grasso_r8_A_ep*.pt")))
+    ckpts = sorted(
+        glob.glob(os.path.join("checkpoints_wlista_lowrank",
+                               "wlista_lowrank_phased_ken_grasso_r8_A_ep*.pt")) +
+        glob.glob(os.path.join("checkpoints_lista_lowrank_phased_ken_grasso",
+                               "wlista_lowrank_phased_ken_grasso_r8_A_ep*.pt"))
+    )
     if not ckpts:
         sys.exit("Nessun checkpoint fase A trovato in checkpoints_wlista_lowrank/")
     _args.src = ckpts[-1]
