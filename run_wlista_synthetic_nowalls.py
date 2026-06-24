@@ -126,7 +126,7 @@ LAMBDA_INIT = 1e-4
 L_EST       = 1.141e4   # riusa stima dal dataset reale (stessa geometria)
 
 # W-LISTA only
-LR_W        = 5e-1
+LR_W        = 2.5e-2
 W_LOG_CLAMP = 4.0
 
 # Contrasto dielettrico (tessuto soft/muscolo a 2.45 GHz)
