@@ -5,3 +5,7 @@
 inference_sweep_wlista.log
 results_inference_ken_grasso/wlista_ken_grasso/sweep.log
 *.ps1
+*.mat
+*.png
+*.log
+*.csv
