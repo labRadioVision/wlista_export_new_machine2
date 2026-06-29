@@ -49,7 +49,7 @@ K           = base.K
 N_EPOCHS    = base.N_EPOCHS
 LR          = 1e-2   # era base.LR=5e-2: ridotto (stesso fix applicato ai run_*_ken_grasso.py,
                       # LR alto causava collasso di z — vedi SESSION_LOG.md)
-LR_W        = 2.5e-2   # era base.LR_W=5e-1: ridotto in proporzione
+LR_W        = 2.5e-1   # era base.LR_W=5e-1: ridotto in proporzione
 LAMBDA_INIT = base.LAMBDA_INIT
 L_EST       = base.L_EST
 W_LOG_CLAMP = base.W_LOG_CLAMP
