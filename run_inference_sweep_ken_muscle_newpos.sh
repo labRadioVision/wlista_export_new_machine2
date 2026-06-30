@@ -8,7 +8,7 @@
 #   bash run_inference_sweep_ken_muscle_newpos.sh 2>&1 | tee inference_sweep_ken_muscle_newpos.log
 
 set -e
-PYTHON="D:/holography_scripts/.conda/python.exe"
+PYTHON="python3"
 SCRIPT="loop_inference_ken_muscle_newpos.py"
 
 echo "========================================================"
